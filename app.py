@@ -3,22 +3,22 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-# 1. Page Config
+# --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="Social Media Dashboard 🎀", layout="wide")
 
-# 2. Custom CSS for the Coquette Vibe + Cursive
+# --- 2. CUSTOM CSS (The Coquette Glow-Up) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Great+Vibes&family=Playfair+Display:ital@1&display=swap');
 
-    /* Background: Lace Pattern Over Pink */
+    /* Background: Delicate Lace Pattern Over Pink */
     .stApp {
         background-color: #FFF5F7;
         background-image: url("https://www.transparenttextures.com/patterns/white-lace.png");
         background-attachment: fixed;
     }
     
-    /* Main Title */
+    /* Main Title: Original Name in Cursive */
     h1 {
         color: #D4778B !important;
         font-family: 'Great Vibes', cursive;
@@ -27,14 +27,14 @@ st.markdown("""
         text-shadow: 2px 2px 5px rgba(255, 193, 204, 0.5);
     }
     
-    /* Section Titles */
+    /* Section Titles: Original Names in Dancing Script */
     h2, h3 {
         color: #D4778B !important;
         font-family: 'Dancing Script', cursive;
         font-size: 2.2rem !important;
     }
 
-    /* Metric Cards */
+    /* Coquette Metric Cards */
     div[data-testid="stMetric"] {
         background-color: rgba(255, 255, 255, 0.75);
         border: 2px dashed #FFC1CC;
@@ -55,13 +55,13 @@ st.markdown("""
         color: #FF85A2 !important;
     }
 
-    /* Sidebar */
+    /* Sidebar Styling */
     section[data-testid="stSidebar"] {
         background-color: rgba(255, 228, 232, 0.9) !important;
         border-right: 4px double #FFC1CC;
     }
 
-    /* Buttons */
+    /* Buttons: Soft & Pill-shaped */
     .stButton>button {
         background-color: #FFC1CC !important;
         color: white !important;
@@ -83,16 +83,18 @@ st.markdown("""
 
 st.title("Social Media Performance Dashboard")
 
-# --- DATA LOADING & AUTO-DELETE (14 DAYS) ---
+# --- 3. DATA LOADING & AUTO-DELETE (14 DAYS) ---
 def load_and_prune_data():
     df = pd.read_csv('dashboard - Company.csv')
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    
     metrics = ['Views', 'Likes', 'Comments', 'Shares', 'New Follow Count']
     for col in metrics:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
     df['Date Published'] = pd.to_datetime(df['Date Published'], errors='coerce')
     
-    # Auto-delete older than 14 days
+    # Auto-delete logic
     cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=14)
     df = df[df['Date Published'] >= cutoff_date]
     
@@ -101,16 +103,17 @@ def load_and_prune_data():
 
 df = load_and_prune_data()
 
-# --- SIDEBAR FILTERS ---
+# --- 4. SIDEBAR FILTERS ---
 st.sidebar.markdown("### Dashboard Filters")
 platforms = st.sidebar.multiselect(
     "Filter by Platform:",
     options=df["Platform"].unique(),
     default=df["Platform"].unique()
 )
+
 filtered_df = df[df["Platform"].isin(platforms)]
 
-# --- KEY METRIC CARDS ---
+# --- 5. KEY METRIC CARDS ---
 col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("Total Views", f"{int(filtered_df['Views'].sum()):,}")
 col2.metric("Total Likes", int(filtered_df["Likes"].sum()))
@@ -118,9 +121,10 @@ col3.metric("Comments", int(filtered_df["Comments"].sum()))
 col4.metric("Shares", int(filtered_df["Shares"].sum()))
 col5.metric("Followers Gained", int(filtered_df["New Follow Count"].sum()))
 
-st.markdown("<hr>", unsafe_allow_stdio=True)
+# FIXED: Changed unsafe_allow_stdio to unsafe_allow_html
+st.markdown("<hr>", unsafe_allow_html=True)
 
-# --- DASHBOARD VISUALS ---
+# --- 6. DASHBOARD VISUALS ---
 coquette_palette = ["#FFC1CC", "#FFD1DC", "#FFB7C5", "#E0B0FF", "#FADADD"]
 
 row1_col1, row1_col2 = st.columns(2)
@@ -160,15 +164,16 @@ with row2_col2:
     fig_pie.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig_pie, use_container_width=True)
 
-st.markdown("<hr>", unsafe_allow_stdio=True)
+# FIXED: Changed unsafe_allow_stdio to unsafe_allow_html
+st.markdown("<hr>", unsafe_allow_html=True)
 
-# --- DATA EDITOR (Detailed Content Breakdown) ---
+# --- 7. DATA EDITOR (Detailed Content Breakdown) ---
 st.subheader("Detailed Content Breakdown")
 st.info("Edit your content metrics below and save to update the charts. ✨")
+
 edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
 
 if st.button("Save Changes"):
     edited_df.to_csv('dashboard - Company.csv', index=False)
     st.success("Data successfully updated!")
-
     st.rerun()
