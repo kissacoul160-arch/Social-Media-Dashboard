@@ -95,4 +95,5 @@ with row2_col2:
 
 # --- 5. DATA EXPLORER ---
 st.subheader("Detailed Content Breakdown")
+
 st.dataframe(filtered_df[['Date Published', 'Platform', 'Topic', 'Views', 'Likes', 'Shares', 'Total Engagement']], use_container_width=True)
