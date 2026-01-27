@@ -79,7 +79,7 @@ st.markdown("""
         background-image: linear-gradient(to right, transparent, #FFC1CC, transparent);
     }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 st.title("Social Media Performance Dashboard")
 
@@ -170,4 +170,5 @@ edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
 if st.button("Save Changes"):
     edited_df.to_csv('dashboard - Company.csv', index=False)
     st.success("Data successfully updated!")
+
     st.rerun()
