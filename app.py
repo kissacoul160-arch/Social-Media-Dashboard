@@ -172,3 +172,164 @@ if st.button("Save Changes"):
     edited_df.to_csv('dashboard - Company.csv', index=False)
     st.success("Data successfully updated!")
     st.rerun()
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from datetime import datetime
+
+# --- 1. PAGE CONFIGURATION ---
+st.set_page_config(page_title="Forum Dashboard 🎀", layout="wide")
+
+# --- 2. THE COQUETTE GLUE (CSS) ---
+st.markdown(
+    """
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Great+Vibes&family=Playfair+Display:ital@1&display=swap" rel="stylesheet">
+    
+    <style>
+    .stApp {
+        background-color: #FFF5F7 !important;
+        background-image: url("https://www.transparenttextures.com/patterns/white-lace.png") !important;
+        background-attachment: fixed !important;
+    }
+    h1 {
+        font-family: 'Great Vibes', cursive !important;
+        color: #D4778B !important;
+        font-size: 5rem !important;
+        text-align: center !important;
+    }
+    h2, h3, .stSubheader {
+        font-family: 'Dancing Script', cursive !important;
+        color: #D4778B !important;
+        font-size: 2.5rem !important;
+    }
+    div[data-testid="stMetric"] {
+        background-color: rgba(255, 255, 255, 0.8) !important;
+        border: 2px dashed #FFC1CC !important;
+        border-radius: 30px !important;
+        padding: 20px !important;
+    }
+    div[data-testid="stMetricLabel"] > div {
+        font-family: 'Dancing Script', cursive !important;
+        font-size: 1.8rem !important;
+        color: #D4778B !important;
+    }
+    section[data-testid="stSidebar"] {
+        background-color: rgba(255, 228, 232, 1) !important;
+        border-right: 5px double #FFC1CC !important;
+    }
+    .stButton > button {
+        background-color: #FFC1CC !important;
+        color: white !important;
+        border-radius: 50px !important;
+        font-family: 'Dancing Script', cursive !important;
+        border: 2px solid #FFF !important;
+    }
+    hr {
+        border: 0; height: 3px;
+        background-image: linear-gradient(to right, transparent, #FFC1CC, transparent) !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- 3. DATA LOGIC ---
+def load_and_prune(file_name):
+    try:
+        df = pd.read_csv(file_name)
+        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+        metrics = ['Views', 'Likes', 'Comments']
+        for col in metrics:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
+        df['Date Published'] = pd.to_datetime(df['Date Published'], errors='coerce')
+        
+        # 14-Day Pruning
+        cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=14)
+        df = df[df['Date Published'] >= cutoff_date]
+        
+        df['Total Engagement'] = df['Likes'] + df['Comments']
+        return df
+    except:
+        return pd.DataFrame(columns=['Platform', 'Topic Category', 'Views', 'Likes', 'Comments', 'Date Published'])
+
+# --- 4. NAVIGATION ---
+st.sidebar.markdown("### Navigation")
+page = st.sidebar.radio("Select Dashboard:", ["Social Media Dashboard", "Forum Dashboard"])
+
+if page == "Social Media Dashboard":
+    current_file = 'dashboard - Company.csv'
+    display_title = "Social Media Dashboard"
+else:
+    current_file = 'forum - Company.csv' 
+    display_title = "Forum Dashboard"
+
+# Sidebar Upload
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"### Update {page} Data")
+uploaded_file = st.sidebar.file_uploader(f"Upload CSV", type="csv")
+
+if uploaded_file is not None:
+    new_data = pd.read_csv(uploaded_file)
+    new_data.to_csv(current_file, index=False)
+    st.sidebar.success("Updated! ✨")
+    st.rerun()
+
+df = load_and_prune(current_file)
+
+# --- 5. FILTERS ---
+st.sidebar.header("Dashboard Filters")
+platforms = st.sidebar.multiselect(
+    "Filter by Category:", 
+    options=df["Platform"].unique() if not df.empty else [], 
+    default=df["Platform"].unique() if not df.empty else []
+)
+filtered_df = df[df["Platform"].isin(platforms)] if not df.empty else df
+
+# --- 6. MAIN CONTENT ---
+st.title(display_title)
+
+col1, col2, col3 = st.columns(3)
+if not filtered_df.empty:
+    col1.metric("Total Views", f"{int(filtered_df['Views'].sum()):,}")
+    col2.metric("Total Likes", f"{int(filtered_df['Likes'].sum()):,}")
+    col3.metric("Comments", f"{int(filtered_df['Comments'].sum()):,}")
+else:
+    for col in [col1, col2, col3]: col.metric("Metric", "0")
+
+st.markdown("<hr>", unsafe_allow_html=True)
+
+coquette_palette = ["#FFC1CC", "#FFD1DC", "#FFB7C5", "#E0B0FF", "#FADADD"]
+
+if not filtered_df.empty:
+    r1c1, r1c2 = st.columns(2)
+    with r1c1:
+        st.subheader("Cumulative Summary")
+        m_melted = filtered_df[['Views', 'Likes', 'Comments']].sum().reset_index()
+        m_melted.columns = ['Metric', 'Total']
+        fig1 = px.bar(m_melted, x="Metric", y="Total", color="Metric", text_auto=True, color_discrete_sequence=coquette_palette)
+        fig1.update_layout(showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig1, use_container_width=True)
+
+    with r1c2:
+        st.subheader("Engagement by Topic")
+        topic_eng = filtered_df.groupby('Topic Category')['Total Engagement'].sum().reset_index()
+        fig2 = px.bar(topic_eng, x="Total Engagement", y="Topic Category", orientation='h', color="Topic Category", color_discrete_sequence=coquette_palette[::-1])
+        fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig2, use_container_width=True)
+
+st.markdown("<hr>", unsafe_allow_html=True)
+
+# --- 7. DATA EDITOR ---
+st.subheader("Detailed Content Breakdown")
+st.info("Old posts are auto-hidden. Add or edit data below.")
+edited_df = st.data_editor(df, num_rows="dynamic", key=f"editor_{page}", use_container_width=True)
+
+if st.button("Save Changes"):
+    edited_df.to_csv(current_file, index=False)
+    st.success("Saved! 🪄")
+    st.rerun()
+
