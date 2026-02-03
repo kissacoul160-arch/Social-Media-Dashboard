@@ -236,126 +236,112 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- 3. DATA LOGIC (Using your provided CSV) ---
+# --- 3. DATA LOADING ---
 DATA_FILE = 'dashboard - General.csv'
 
-def load_and_prune(page_type):
+def load_data():
     try:
         df = pd.read_csv(DATA_FILE)
-        # Remove empty columns
         df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-        
-        # Mapping your CSV columns to Dashboard Metrics
+        # Rename columns to standard internal names
         df = df.rename(columns={
             'Likes/Votes': 'Likes',
             'Comments/Replies': 'Comments'
         })
-        
-        # Clean numeric data
-        metrics = ['Views', 'Likes', 'Comments']
-        for col in metrics:
+        # Clean numeric columns
+        for col in ['Views', 'Likes', 'Comments']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
             else:
                 df[col] = 0
-        
-        # Date Handling
+        # Clean dates
         if 'Date Published' in df.columns:
             df['Date Published'] = pd.to_datetime(df['Date Published'], errors='coerce')
-        
-        # 14-Day Pruning Rule
-        cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=14)
-        df = df[df['Date Published'] >= cutoff_date]
-        
-        # Engagement = Likes + Comments
-        df['Total Engagement'] = df['Likes'] + df['Comments']
-        
-        # Filter by Dashboard Selection (Forum vs Media)
-        if page_type == "Social Media Dashboard":
-            df = df[df['Forum/Media'].str.contains('Media', case=False, na=False)]
-        else:
-            df = df[df['Forum/Media'].str.contains('Forum', case=False, na=False)]
-            
         return df
-    except Exception as e:
-        return pd.DataFrame(columns=['Platform', 'Topic Category', 'Views', 'Likes', 'Comments', 'Date Published'])
+    except:
+        return pd.DataFrame()
 
 # --- 4. NAVIGATION ---
 st.sidebar.markdown("### Navigation")
-# The user specifically requested "Forum Dashboard" as the main focus
 page = st.sidebar.radio("Select Dashboard:", ["Forum Dashboard", "Social Media Dashboard"])
 
-# Sidebar Upload - Replaces the central file
+# Sidebar Upload
 st.sidebar.markdown("---")
-st.sidebar.markdown(f"### Update General Data")
-uploaded_file = st.sidebar.file_uploader(f"Upload new dashboard - General.csv", type="csv")
-
+st.sidebar.markdown("### Update CSV File")
+uploaded_file = st.sidebar.file_uploader("Upload 'dashboard - General.csv'", type="csv")
 if uploaded_file is not None:
-    new_data = pd.read_csv(uploaded_file)
-    new_data.to_csv(DATA_FILE, index=False)
-    st.sidebar.success("Data updated! ✨")
+    up_df = pd.read_csv(uploaded_file)
+    up_df.to_csv(DATA_FILE, index=False)
+    st.sidebar.success("File Replaced! ✨")
     st.rerun()
 
-df = load_and_prune(page)
+# Load and Filter
+raw_df = load_data()
 
-# --- 5. FILTERS ---
-st.sidebar.header("Dashboard Filters")
-if not df.empty:
-    platforms = st.sidebar.multiselect(
-        "Filter by Platform:", 
-        options=df["Platform"].unique(), 
-        default=df["Platform"].unique()
-    )
-    filtered_df = df[df["Platform"].isin(platforms)]
+if not raw_df.empty:
+    # 1. Prune by Date (14 Days)
+    cutoff = pd.Timestamp.now().normalize() - pd.Timedelta(days=14)
+    filtered_df = raw_df[raw_df['Date Published'] >= cutoff].copy()
+    
+    # 2. Filter by Page Type (Forum vs Media)
+    if page == "Forum Dashboard":
+        filtered_df = filtered_df[filtered_df['Forum/Media'].str.contains('Forum', case=False, na=False)]
+    else:
+        filtered_df = filtered_df[filtered_df['Forum/Media'].str.contains('Media', case=False, na=False)]
+    
+    filtered_df['Total Engagement'] = filtered_df['Likes'] + filtered_df['Comments']
 else:
-    filtered_df = df
+    filtered_df = pd.DataFrame()
 
-# --- 6. DASHBOARD UI ---
+# --- 5. MAIN UI ---
 st.title(page)
 
-col1, col2, col3 = st.columns(3)
+# Top Metrics
+c1, c2, c3 = st.columns(3)
 if not filtered_df.empty:
-    col1.metric("Total Views", f"{int(filtered_df['Views'].sum()):,}")
-    col2.metric("Total Likes/Votes", f"{int(filtered_df['Likes'].sum()):,}")
-    col3.metric("Comments/Replies", f"{int(filtered_df['Comments'].sum()):,}")
+    c1.metric("Total Views", f"{int(filtered_df['Views'].sum()):,}")
+    c2.metric("Total Likes/Votes", f"{int(filtered_df['Likes'].sum()):,}")
+    c3.metric("Comments/Replies", f"{int(filtered_df['Comments'].sum()):,}")
 else:
-    for col in [col1, col2, col3]: col.metric("Metric", "0")
+    c1.metric("Total Views", "0")
+    c2.metric("Total Likes/Votes", "0")
+    c3.metric("Comments/Replies", "0")
 
 st.markdown("<hr>", unsafe_allow_html=True)
 
-coquette_palette = ["#FFC1CC", "#FFD1DC", "#FFB7C5", "#E0B0FF", "#FADADD"]
-
+# Charts
 if not filtered_df.empty:
-    r1c1, r1c2 = st.columns(2)
-    with r1c1:
-        st.subheader("Metric Summary")
-        m_melted = filtered_df[['Views', 'Likes', 'Comments']].sum().reset_index()
-        m_melted.columns = ['Metric', 'Total']
-        fig1 = px.bar(m_melted, x="Metric", y="Total", color="Metric", text_auto=True, color_discrete_sequence=coquette_palette)
+    col_left, col_right = st.columns(2)
+    palette = ["#FFC1CC", "#FFD1DC", "#FFB7C5", "#E0B0FF", "#FADADD"]
+    
+    with col_left:
+        st.subheader("Metrics Distribution")
+        m_data = filtered_df[['Views', 'Likes', 'Comments']].sum().reset_index()
+        m_data.columns = ['Metric', 'Total']
+        fig1 = px.bar(m_data, x="Metric", y="Total", color="Metric", color_discrete_sequence=palette)
         fig1.update_layout(showlegend=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig1, use_container_width=True)
+        st.plotly_chart(fig1, use_container_width=True, key=f"bar_{page}")
 
-    with r1c2:
+    with col_right:
         st.subheader("Engagement by Topic")
-        topic_eng = filtered_df.groupby('Topic Category')['Total Engagement'].sum().reset_index()
-        fig2 = px.bar(topic_eng, x="Total Engagement", y="Topic Category", orientation='h', color="Topic Category", color_discrete_sequence=coquette_palette[::-1])
+        t_data = filtered_df.groupby('Topic Category')['Total Engagement'].sum().reset_index()
+        fig2 = px.bar(t_data, x="Total Engagement", y="Topic Category", orientation='h', color_discrete_sequence=[palette[0]])
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True, key=f"topic_{page}")
 else:
-    st.info("No data matches the current filters or the 14-day date range. ✨")
+    st.warning("No data found for this category in the last 14 days. ✨")
 
 st.markdown("<hr>", unsafe_allow_html=True)
 
-# --- 7. DATA EDITOR ---
-st.subheader("Detailed Breakdown")
-st.info("Edit the full dataset below. Any changes made here will update 'dashboard - General.csv' permanently.")
+# --- 6. DATA EDITOR ---
+st.subheader("Raw Data Editor")
+st.write("Changes here affect the main CSV file.")
 
-# Load full data for editing
-full_df = pd.read_csv(DATA_FILE)
-full_df = full_df.loc[:, ~full_df.columns.str.contains('^Unnamed')]
-edited_df = st.data_editor(full_df, num_rows="dynamic", key="main_editor", use_container_width=True)
+# Important: Use a unique key for the data editor based on the page
+if not raw_df.empty:
+    updated_df = st.data_editor(raw_df, num_rows="dynamic", use_container_width=True, key=f"editor_key_{page}")
 
-if st.button("Save All Changes"):
-    edited_df.to_csv(DATA_FILE, index=False)
-    st.success("Changes saved permanently! 🪄")
-    st.rerun()
+    if st.button("Save Changes Permanently", key=f"btn_save_{page}"):
+        updated_df.to_csv(DATA_FILE, index=False)
+        st.success("CSV Updated! 🪄")
+        st.rerun()
