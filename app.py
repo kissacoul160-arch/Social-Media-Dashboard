@@ -236,67 +236,88 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- 3. DATA LOGIC ---
-def load_and_prune(file_name):
+# --- 3. DATA LOGIC (Using your provided CSV) ---
+DATA_FILE = 'dashboard - General.csv'
+
+def load_and_prune(page_type):
     try:
-        df = pd.read_csv(file_name)
+        df = pd.read_csv(DATA_FILE)
+        # Remove empty columns
         df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+        
+        # Mapping your CSV columns to Dashboard Metrics
+        df = df.rename(columns={
+            'Likes/Votes': 'Likes',
+            'Comments/Replies': 'Comments'
+        })
+        
+        # Clean numeric data
         metrics = ['Views', 'Likes', 'Comments']
         for col in metrics:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            else:
+                df[col] = 0
         
-        df['Date Published'] = pd.to_datetime(df['Date Published'], errors='coerce')
+        # Date Handling
+        if 'Date Published' in df.columns:
+            df['Date Published'] = pd.to_datetime(df['Date Published'], errors='coerce')
         
-        # 14-Day Pruning
+        # 14-Day Pruning Rule
         cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=14)
         df = df[df['Date Published'] >= cutoff_date]
         
+        # Engagement = Likes + Comments
         df['Total Engagement'] = df['Likes'] + df['Comments']
+        
+        # Filter by Dashboard Selection (Forum vs Media)
+        if page_type == "Social Media Dashboard":
+            df = df[df['Forum/Media'].str.contains('Media', case=False, na=False)]
+        else:
+            df = df[df['Forum/Media'].str.contains('Forum', case=False, na=False)]
+            
         return df
-    except:
+    except Exception as e:
         return pd.DataFrame(columns=['Platform', 'Topic Category', 'Views', 'Likes', 'Comments', 'Date Published'])
 
 # --- 4. NAVIGATION ---
 st.sidebar.markdown("### Navigation")
-page = st.sidebar.radio("Select Dashboard:", ["Social Media Dashboard", "Forum Dashboard"])
+# The user specifically requested "Forum Dashboard" as the main focus
+page = st.sidebar.radio("Select Dashboard:", ["Forum Dashboard", "Social Media Dashboard"])
 
-if page == "Social Media Dashboard":
-    current_file = 'dashboard - Company.csv'
-    display_title = "Social Media Dashboard"
-else:
-    current_file = 'forum - Company.csv' 
-    display_title = "Forum Dashboard"
-
-# Sidebar Upload
+# Sidebar Upload - Replaces the central file
 st.sidebar.markdown("---")
-st.sidebar.markdown(f"### Update {page} Data")
-uploaded_file = st.sidebar.file_uploader(f"Upload CSV", type="csv")
+st.sidebar.markdown(f"### Update General Data")
+uploaded_file = st.sidebar.file_uploader(f"Upload new dashboard - General.csv", type="csv")
 
 if uploaded_file is not None:
     new_data = pd.read_csv(uploaded_file)
-    new_data.to_csv(current_file, index=False)
-    st.sidebar.success("Updated! ✨")
+    new_data.to_csv(DATA_FILE, index=False)
+    st.sidebar.success("Data updated! ✨")
     st.rerun()
 
-df = load_and_prune(current_file)
+df = load_and_prune(page)
 
 # --- 5. FILTERS ---
 st.sidebar.header("Dashboard Filters")
-platforms = st.sidebar.multiselect(
-    "Filter by Category:", 
-    options=df["Platform"].unique() if not df.empty else [], 
-    default=df["Platform"].unique() if not df.empty else []
-)
-filtered_df = df[df["Platform"].isin(platforms)] if not df.empty else df
+if not df.empty:
+    platforms = st.sidebar.multiselect(
+        "Filter by Platform:", 
+        options=df["Platform"].unique(), 
+        default=df["Platform"].unique()
+    )
+    filtered_df = df[df["Platform"].isin(platforms)]
+else:
+    filtered_df = df
 
-# --- 6. MAIN CONTENT ---
-st.title(display_title)
+# --- 6. DASHBOARD UI ---
+st.title(page)
 
 col1, col2, col3 = st.columns(3)
 if not filtered_df.empty:
     col1.metric("Total Views", f"{int(filtered_df['Views'].sum()):,}")
-    col2.metric("Total Likes", f"{int(filtered_df['Likes'].sum()):,}")
-    col3.metric("Comments", f"{int(filtered_df['Comments'].sum()):,}")
+    col2.metric("Total Likes/Votes", f"{int(filtered_df['Likes'].sum()):,}")
+    col3.metric("Comments/Replies", f"{int(filtered_df['Comments'].sum()):,}")
 else:
     for col in [col1, col2, col3]: col.metric("Metric", "0")
 
@@ -307,7 +328,7 @@ coquette_palette = ["#FFC1CC", "#FFD1DC", "#FFB7C5", "#E0B0FF", "#FADADD"]
 if not filtered_df.empty:
     r1c1, r1c2 = st.columns(2)
     with r1c1:
-        st.subheader("Cumulative Summary")
+        st.subheader("Metric Summary")
         m_melted = filtered_df[['Views', 'Likes', 'Comments']].sum().reset_index()
         m_melted.columns = ['Metric', 'Total']
         fig1 = px.bar(m_melted, x="Metric", y="Total", color="Metric", text_auto=True, color_discrete_sequence=coquette_palette)
@@ -320,16 +341,21 @@ if not filtered_df.empty:
         fig2 = px.bar(topic_eng, x="Total Engagement", y="Topic Category", orientation='h', color="Topic Category", color_discrete_sequence=coquette_palette[::-1])
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig2, use_container_width=True)
+else:
+    st.info("No data matches the current filters or the 14-day date range. ✨")
 
 st.markdown("<hr>", unsafe_allow_html=True)
 
 # --- 7. DATA EDITOR ---
-st.subheader("Detailed Content Breakdown")
-st.info("Old posts are auto-hidden. Add or edit data below.")
-edited_df = st.data_editor(df, num_rows="dynamic", key=f"editor_{page}", use_container_width=True)
+st.subheader("Detailed Breakdown")
+st.info("Edit the full dataset below. Any changes made here will update 'dashboard - General.csv' permanently.")
 
-if st.button("Save Changes"):
-    edited_df.to_csv(current_file, index=False)
-    st.success("Saved! 🪄")
+# Load full data for editing
+full_df = pd.read_csv(DATA_FILE)
+full_df = full_df.loc[:, ~full_df.columns.str.contains('^Unnamed')]
+edited_df = st.data_editor(full_df, num_rows="dynamic", key="main_editor", use_container_width=True)
+
+if st.button("Save All Changes"):
+    edited_df.to_csv(DATA_FILE, index=False)
+    st.success("Changes saved permanently! 🪄")
     st.rerun()
-
